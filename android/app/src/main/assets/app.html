@@ -86,6 +86,11 @@
         <input type="number" id="dark" value="12" min="0" max="15" step="1"></div>
       <div class="fld"><label id="t-spd">打印速度 (1-6)</label>
         <input type="number" id="spd" value="2" min="1" max="6" step="1"></div>
+      <div class="fld"><label id="t-mode">打印方式</label>
+        <select id="mode" style="width:100%;border:2px solid #e2e2e2;border-radius:9px;background:#fafafa;padding:12px;font-size:16px">
+          <option value="native" id="o-nat">清晰 (推荐)</option>
+          <option value="img" id="o-img">图片</option>
+        </select></div>
       <div class="fld"><label id="t-rot">旋转方向</label>
         <select id="rot" style="width:100%;border:2px solid #e2e2e2;border-radius:9px;background:#fafafa;padding:12px;font-size:16px">
           <option value="0">0°</option><option value="90">90°</option>
@@ -405,6 +410,77 @@ function zplBytes(px, W, H, copies){
     hex + '^FS^PQ' + Math.max(1, copies) + '^XZ');
 }
 
+
+/* ---- Εγγενείς εντολές TSPL: το barcode/QR το σχεδιάζει ο ΙΔΙΟΣ ο εκτυπωτής,
+   στην πλήρη ανάλυσή του (πολύ πιο κοφτό από εικόνα) ---- */
+function tsplNative(o){
+  // o: {wmm,hmm,gapmm,copies,density,speed,sku,text,type,showSku,rot}
+  const D = 8, W = Math.round(o.wmm*D), H = Math.round(o.hmm*D);
+  const sku = (o.sku||'').trim(), txt = (o.text||'').trim();
+  // εγγενείς γραμματοσειρές μόνο για λατινικά/αριθμούς
+  const ascii = s => /^[\x20-\x7E]*$/.test(s);
+  if (!ascii(sku) || !ascii(txt)) return null;
+  if (!sku && !txt) return null;
+
+  const pad = 8;                       // 1mm περιθώριο
+  const availW = W - 2*pad;
+  const FONTS = { '2': [12,20], '3': [16,24], '4': [24,32] };
+  const lines = [];
+  let y = pad;
+
+  // --- κείμενο πάνω
+  let textH = 0, fkey = '3', mult = 1;
+  if (txt){
+    for (const k of ['4','3','2']){
+      const [cw, ch] = FONTS[k];
+      if (txt.length * cw <= availW && ch <= H/3){ fkey = k; break; }
+      fkey = '2';
+    }
+    textH = FONTS[fkey][1] + 4;
+  }
+
+  // --- κωδικός
+  const skuTextH = (sku && o.showSku) ? 24 : 0;
+  let body = H - 2*pad - textH - skuTextH;
+  let cmd = null, contentH = 0;
+  if (sku && o.type === 'qr'){
+    // μέγιστο μέγεθος κελιού που χωράει (QR v1-2 → 21-25 modules)
+    const mods = sku.length <= 14 ? 21 : 25;
+    let cell = Math.max(2, Math.min(10, Math.floor(Math.min(body, availW) / mods)));
+    const size = mods * cell;
+    const x = Math.round((W - size) / 2);
+    contentH = size;
+    cmd = { draw: yy => 'QRCODE ' + x + ',' + yy + ',M,' + cell + ',A,0,"' + sku + '"' };
+  } else if (sku){
+    const widths = c128widths(sku);
+    const modules = widths.reduce((a,b)=>a+b,0);
+    let narrow = Math.max(1, Math.min(4, Math.floor((availW - 32) / modules)));
+    const bw = modules * narrow;
+    const x = Math.max(pad, Math.round((W - bw) / 2));
+    const bh = Math.max(24, body);
+    contentH = bh;
+    cmd = { draw: yy => 'BARCODE ' + x + ',' + yy + ',"128",' + bh + ',' +
+              (o.showSku ? 1 : 0) + ',0,' + narrow + ',' + (narrow*2) + ',"' + sku + '"' };
+  }
+
+  const total = textH + contentH + skuTextH;
+  y = Math.max(pad, Math.round((H - total) / 2));
+
+  const out = ['SIZE ' + mmStr(o.wmm) + ' mm,' + mmStr(o.hmm) + ' mm',
+               'GAP ' + mmStr(o.gapmm) + ' mm,0',
+               'DENSITY ' + o.density, 'SPEED ' + o.speed,
+               'DIRECTION ' + (o.rot === 180 ? 0 : 1), 'CLS'];
+  if (txt){
+    const [cw] = FONTS[fkey];
+    const tx = Math.max(0, Math.round((W - txt.length * cw) / 2));
+    out.push('TEXT ' + tx + ',' + y + ',"' + fkey + '",0,1,1,"' + txt.replace(/"/g,'\\"') + '"');
+    y += textH;
+  }
+  if (cmd) out.push(cmd.draw(y));
+  out.push('PRINT ' + Math.max(1, o.copies) + ',1');
+  return new TextEncoder().encode(out.join('\r\n') + '\r\n');
+}
+
 /* ---- Μεταφράσεις ---- */
 const TR = {
   zh:{ title:"标签打印", hlabel:"标签", presets:"常用尺寸", w:"宽度 (mm)", h:"高度 (mm)",
@@ -416,7 +492,7 @@ const TR = {
        need:"请先输入 SKU 编码", toobig:"编码太长，请改用二维码或更大的标签", saved:"已保存 {n} 张图片 ✓",
        hprinter:"打印机", device:"蓝牙打印机", ip:"WiFi 打印机 IP (可选)", qty:"数量",
        direct:"🖨 直接打印", refresh:"↻ 刷新", printing:"打印中…", done:"打印完成 ✓",
-       perr:"打印失败: {e}", nodev:"请先在系统设置中配对蓝牙打印机", gap:"标签间距 (mm)", dark:"打印浓度 (0-15)", spd:"打印速度 (1-6)", rot:"旋转方向",
+       perr:"打印失败: {e}", nodev:"请先在系统设置中配对蓝牙打印机", gap:"标签间距 (mm)", dark:"打印浓度 (0-15)", spd:"打印速度 (1-6)", rot:"旋转方向", mode:"打印方式", mnat:"清晰 (推荐)", mimg:"图片",
        batchprint:"🖨 打印全部" },
   en:{ title:"Label printing", hlabel:"Label", presets:"Quick sizes", w:"Width (mm)", h:"Height (mm)",
        hcontent:"Content", sku:"SKU code", text:"Text (optional)", type:"Code type",
@@ -428,7 +504,7 @@ const TR = {
        hprinter:"Printer", device:"Bluetooth printer", ip:"WiFi printer IP (optional)", qty:"Quantity",
        direct:"🖨 Print now", refresh:"↻ Refresh", printing:"Printing…", done:"Printed ✓",
        perr:"Print failed: {e}", nodev:"Pair the Bluetooth printer in Android settings first",
-       gap:"Gap between labels (mm)", dark:"Darkness (0-15)", spd:"Speed (1-6)", rot:"Rotation", batchprint:"🖨 Print all" },
+       gap:"Gap between labels (mm)", dark:"Darkness (0-15)", spd:"Speed (1-6)", rot:"Rotation", mode:"Print mode", mnat:"Sharp (recommended)", mimg:"Image", batchprint:"🖨 Print all" },
   el:{ title:"Εκτύπωση ετικετών", hlabel:"Ετικέτα", presets:"Έτοιμα μεγέθη", w:"Πλάτος (mm)", h:"Ύψος (mm)",
        hcontent:"Περιεχόμενο", sku:"Κωδικός SKU", text:"Κείμενο (προαιρετικό)", type:"Τύπος κωδικού",
        showsku:"Εμφάνιση SKU κάτω από το barcode", hpreview:"Προεπισκόπηση", save:"📥 Αποθήκευση εικόνας",
@@ -441,7 +517,7 @@ const TR = {
        qty:"Τεμάχια", direct:"🖨 Άμεση εκτύπωση", refresh:"↻ Ανανέωση", printing:"Εκτύπωση…",
        done:"Τυπώθηκε ✓", perr:"Αποτυχία εκτύπωσης: {e}",
        nodev:"Ζευγάρωσε πρώτα τον εκτυπωτή Bluetooth από τις ρυθμίσεις",
-       gap:"Κενό μεταξύ ετικετών (mm)", dark:"Ένταση μαύρου (0-15)", spd:"Ταχύτητα (1-6)", rot:"Περιστροφή", batchprint:"🖨 Εκτύπωση όλων" },
+       gap:"Κενό μεταξύ ετικετών (mm)", dark:"Ένταση μαύρου (0-15)", spd:"Ταχύτητα (1-6)", rot:"Περιστροφή", mode:"Τρόπος εκτύπωσης", mnat:"Κοφτό (συνιστάται)", mimg:"Εικόνα", batchprint:"🖨 Εκτύπωση όλων" },
 };
 let L = localStorage.getItem('gl-lang') || 'zh';
 const T = (k, kw) => { let s = (TR[L]||TR.zh)[k] || k;
@@ -684,10 +760,23 @@ function pstat(msg, ok){
   el.className = ok === false ? 'warn' : 'ok';
   el.textContent = msg;
 }
-function sendLabel(cv, wmm, hmm){
+function sendLabel(cv, wmm, hmm, over){
   const copies = Math.max(1, Math.min(999, +$('qty').value || 1));
   const gapmm = Math.max(0, Math.min(10, +$('gap').value || 2));
-  const data = b64(cmdsFor(cv, copies, gapmm, wmm, hmm));
+  const deg = +($('rot') ? $('rot').value : 0) || 0;
+  let bytes = null;
+  if ($('mode').value === 'native'){
+    const v = over || vals();
+    bytes = tsplNative({ wmm: (deg===90||deg===270) ? hmm : wmm,
+                         hmm: (deg===90||deg===270) ? wmm : hmm,
+                         gapmm, copies,
+                         density: Math.max(0, Math.min(15, +$('dark').value)),
+                         speed: Math.max(1, Math.min(6, +$('spd').value || 2)),
+                         sku: v.sku, text: v.text, type,
+                         showSku: v.showSku, rot: deg });
+  }
+  if (!bytes) bytes = cmdsFor(cv, copies, gapmm, wmm, hmm);
+  const data = b64(bytes);
   const ip = ($('ip').value || '').trim();
   if (ip){
     const [host, p] = ip.split(':');
@@ -706,6 +795,9 @@ if (APP){
   if (savedSpd !== null) $('spd').value = savedSpd;
   const savedRot = localStorage.getItem('gl-rot');
   if (savedRot !== null) $('rot').value = savedRot;
+  const savedMode = localStorage.getItem('gl-mode');
+  if (savedMode !== null) $('mode').value = savedMode;
+  $('mode').onchange = () => localStorage.setItem('gl-mode', $('mode').value);
   $('save').style.display = 'none';
   $('printbtn').style.display = 'none';
   $('steps').style.display = 'none';
@@ -731,7 +823,7 @@ if (APP){
       for (const ln of lines){
         const [sku, text] = ln.split(';').map(s => (s||'').trim());
         const { canvas } = drawLabel(v.w, v.h, sku, text || '', type, v.showSku);
-        const r = sendLabel(canvas, v.w, v.h);
+        const r = sendLabel(canvas, v.w, v.h, { sku, text: text || '', showSku: v.showSku });
         if (r !== 'OK'){ err = r; break; }
         n++;
       }
@@ -745,9 +837,10 @@ const _applyLang = applyLang;
 applyLang = function(){
   _applyLang();
   if (!APP) return;
-  const m = { 't-h-printer':'hprinter','t-device':'device','t-ip':'ip','t-qty':'qty','t-gap':'gap','t-dark':'dark','t-spd':'spd','t-rot':'rot' };
+  const m = { 't-h-printer':'hprinter','t-device':'device','t-ip':'ip','t-qty':'qty','t-gap':'gap','t-dark':'dark','t-spd':'spd','t-rot':'rot','t-mode':'mode' };
   for (const id in m) { const el = $(id); if (el) el.textContent = T(m[id]); }
   $('direct').textContent = T('direct');
+  if ($('o-nat')) { $('o-nat').textContent = T('mnat'); $('o-img').textContent = T('mimg'); }
   $('savebatch').textContent = T('batchprint');
   loadDevices();
 };
