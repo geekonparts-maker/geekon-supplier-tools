@@ -86,6 +86,11 @@
         <input type="number" id="dark" value="12" min="0" max="15" step="1"></div>
       <div class="fld"><label id="t-spd">打印速度 (1-6)</label>
         <input type="number" id="spd" value="2" min="1" max="6" step="1"></div>
+      <div class="fld"><label id="t-rot">旋转方向</label>
+        <select id="rot" style="width:100%;border:2px solid #e2e2e2;border-radius:9px;background:#fafafa;padding:12px;font-size:16px">
+          <option value="0">0°</option><option value="90">90°</option>
+          <option value="180">180°</option><option value="270">270°</option>
+        </select></div>
     </div>
     <div id="pstatus" class="ok" style="display:none"></div>
     <button class="btn" id="direct">🖨 直接打印</button>
@@ -411,7 +416,7 @@ const TR = {
        need:"请先输入 SKU 编码", toobig:"编码太长，请改用二维码或更大的标签", saved:"已保存 {n} 张图片 ✓",
        hprinter:"打印机", device:"蓝牙打印机", ip:"WiFi 打印机 IP (可选)", qty:"数量",
        direct:"🖨 直接打印", refresh:"↻ 刷新", printing:"打印中…", done:"打印完成 ✓",
-       perr:"打印失败: {e}", nodev:"请先在系统设置中配对蓝牙打印机", gap:"标签间距 (mm)", dark:"打印浓度 (0-15)", spd:"打印速度 (1-6)",
+       perr:"打印失败: {e}", nodev:"请先在系统设置中配对蓝牙打印机", gap:"标签间距 (mm)", dark:"打印浓度 (0-15)", spd:"打印速度 (1-6)", rot:"旋转方向",
        batchprint:"🖨 打印全部" },
   en:{ title:"Label printing", hlabel:"Label", presets:"Quick sizes", w:"Width (mm)", h:"Height (mm)",
        hcontent:"Content", sku:"SKU code", text:"Text (optional)", type:"Code type",
@@ -423,7 +428,7 @@ const TR = {
        hprinter:"Printer", device:"Bluetooth printer", ip:"WiFi printer IP (optional)", qty:"Quantity",
        direct:"🖨 Print now", refresh:"↻ Refresh", printing:"Printing…", done:"Printed ✓",
        perr:"Print failed: {e}", nodev:"Pair the Bluetooth printer in Android settings first",
-       gap:"Gap between labels (mm)", dark:"Darkness (0-15)", spd:"Speed (1-6)", batchprint:"🖨 Print all" },
+       gap:"Gap between labels (mm)", dark:"Darkness (0-15)", spd:"Speed (1-6)", rot:"Rotation", batchprint:"🖨 Print all" },
   el:{ title:"Εκτύπωση ετικετών", hlabel:"Ετικέτα", presets:"Έτοιμα μεγέθη", w:"Πλάτος (mm)", h:"Ύψος (mm)",
        hcontent:"Περιεχόμενο", sku:"Κωδικός SKU", text:"Κείμενο (προαιρετικό)", type:"Τύπος κωδικού",
        showsku:"Εμφάνιση SKU κάτω από το barcode", hpreview:"Προεπισκόπηση", save:"📥 Αποθήκευση εικόνας",
@@ -436,7 +441,7 @@ const TR = {
        qty:"Τεμάχια", direct:"🖨 Άμεση εκτύπωση", refresh:"↻ Ανανέωση", printing:"Εκτύπωση…",
        done:"Τυπώθηκε ✓", perr:"Αποτυχία εκτύπωσης: {e}",
        nodev:"Ζευγάρωσε πρώτα τον εκτυπωτή Bluetooth από τις ρυθμίσεις",
-       gap:"Κενό μεταξύ ετικετών (mm)", dark:"Ένταση μαύρου (0-15)", spd:"Ταχύτητα (1-6)", batchprint:"🖨 Εκτύπωση όλων" },
+       gap:"Κενό μεταξύ ετικετών (mm)", dark:"Ένταση μαύρου (0-15)", spd:"Ταχύτητα (1-6)", rot:"Περιστροφή", batchprint:"🖨 Εκτύπωση όλων" },
 };
 let L = localStorage.getItem('gl-lang') || 'zh';
 const T = (k, kw) => { let s = (TR[L]||TR.zh)[k] || k;
@@ -622,7 +627,31 @@ function b64(u8){
   for (let i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i+CH));
   return btoa(s);
 }
-function cmdsFor(cv, copies, gapmm, wmm, hmm){
+function rotateCanvas(cv, deg){
+  if (!deg) return cv;
+  const swap = (deg === 90 || deg === 270);
+  const out = document.createElement('canvas');
+  out.width = swap ? cv.height : cv.width;
+  out.height = swap ? cv.width : cv.height;
+  const x = out.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, out.width, out.height);
+  x.translate(out.width / 2, out.height / 2);
+  x.rotate(deg * Math.PI / 180);
+  x.drawImage(cv, -cv.width / 2, -cv.height / 2);
+  // ξανακαθάρισμα σε αμιγές ασπρόμαυρο (η περιστροφή εισάγει γκρι)
+  const img = x.getImageData(0, 0, out.width, out.height), p = img.data;
+  for (let i = 0; i < p.length; i += 4){
+    const v = (p[i] + p[i+1] + p[i+2]) / 3 < 176 ? 0 : 255;
+    p[i] = p[i+1] = p[i+2] = v; p[i+3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  return out;
+}
+function cmdsFor(cv0, copies, gapmm, wmm, hmm){
+  const deg = +($('rot') ? $('rot').value : 0) || 0;
+  localStorage.setItem('gl-rot', deg);
+  const cv = rotateCanvas(cv0, deg);
+  if (deg === 90 || deg === 270){ const t = wmm; wmm = hmm; hmm = t; }
   const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
   const dens = Math.max(0, Math.min(15, +$('dark').value));
   const spd = Math.max(1, Math.min(6, +$('spd').value || 2));
@@ -675,6 +704,8 @@ if (APP){
   if (savedDark !== null) $('dark').value = savedDark;
   const savedSpd = localStorage.getItem('gl-spd');
   if (savedSpd !== null) $('spd').value = savedSpd;
+  const savedRot = localStorage.getItem('gl-rot');
+  if (savedRot !== null) $('rot').value = savedRot;
   $('save').style.display = 'none';
   $('printbtn').style.display = 'none';
   $('steps').style.display = 'none';
@@ -714,7 +745,7 @@ const _applyLang = applyLang;
 applyLang = function(){
   _applyLang();
   if (!APP) return;
-  const m = { 't-h-printer':'hprinter','t-device':'device','t-ip':'ip','t-qty':'qty','t-gap':'gap','t-dark':'dark','t-spd':'spd' };
+  const m = { 't-h-printer':'hprinter','t-device':'device','t-ip':'ip','t-qty':'qty','t-gap':'gap','t-dark':'dark','t-spd':'spd','t-rot':'rot' };
   for (const id in m) { const el = $(id); if (el) el.textContent = T(m[id]); }
   $('direct').textContent = T('direct');
   $('savebatch').textContent = T('batchprint');
