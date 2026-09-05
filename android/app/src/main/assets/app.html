@@ -47,6 +47,15 @@
   .ok{ background:#eaf7ea; border:1px solid #bfe3bf; color:#237a23; border-radius:8px;
        padding:9px 12px; font-size:13px; font-weight:600; margin-bottom:10px; }
   .steps{ font-size:13px; color:#555; line-height:1.7; padding-left:18px; margin:6px 0 0; }
+  /* Στην εφαρμογή: πρώτα ο κωδικός, μετά η προεπισκόπηση, μετά οι ρυθμίσεις */
+  body.app .wrap{ display:flex; flex-direction:column; padding-bottom:96px; }
+  body.app #contentcard{ order:1 } body.app #prevcard{ order:2 }
+  body.app #labelcard{ order:3 }   body.app #prcard{ order:4 }
+  body.app #batchcard{ order:5 }
+  /* Κουμπί εκτύπωσης πάντα ορατό στο κάτω μέρος */
+  body.app #direct{ position:fixed; left:12px; right:12px; bottom:12px; width:auto;
+    z-index:20; box-shadow:0 6px 20px rgba(0,0,0,.28); }
+  body.app #prcard #pstatus{ margin-bottom:0; }
 </style>
 
 <header>
@@ -82,7 +91,7 @@
     <button class="btn" id="direct">🖨 直接打印</button>
   </div>
 
-  <div class="card">
+  <div class="card" id="labelcard">
     <h2 id="t-h-label">标签</h2>
     <div class="fld">
       <label id="t-presets">常用尺寸</label>
@@ -96,7 +105,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="contentcard">
     <h2 id="t-h-content">内容</h2>
     <div class="fld"><label id="t-sku">SKU 编码</label>
       <input type="text" id="sku" placeholder="app043" autocapitalize="off" autocomplete="off"></div>
@@ -117,7 +126,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="prevcard">
     <h2 id="t-h-preview">预览</h2>
     <div id="warn" class="warn" style="display:none"></div>
     <div class="prev">
@@ -129,7 +138,7 @@
     <ol class="steps" id="steps"></ol>
   </div>
 
-  <div class="card">
+  <div class="card" id="batchcard">
     <h2 id="t-h-batch">批量</h2>
     <div class="fld"><label id="t-batch">每行一个标签 — SKU;文字</label>
       <textarea id="batch" rows="5" placeholder="GKP-1001;Screen A54&#10;GKP-1002;Battery A24"></textarea></div>
@@ -660,6 +669,7 @@ function sendLabel(cv, wmm, hmm){
   return window.Android.printBt(addr, data);
 }
 if (APP){
+  document.body.classList.add('app');
   $('prcard').style.display = 'block';
   const savedDark = localStorage.getItem('gl-dark');
   if (savedDark !== null) $('dark').value = savedDark;
