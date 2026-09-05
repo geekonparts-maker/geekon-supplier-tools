@@ -428,55 +428,85 @@ function tsplNative(o){
   const lines = [];
   let y = pad;
 
-  // --- κείμενο πάνω
-  let textH = 0, fkey = '3', mult = 1;
-  if (txt){
-    for (const k of ['4','3','2']){
-      const [cw, ch] = FONTS[k];
-      if (txt.length * cw <= availW && ch <= H/3){ fkey = k; break; }
-      fkey = '2';
-    }
-    textH = FONTS[fkey][1] + 4;
-  }
+  // --- ΔΙΑΤΑΞΗ ---
+  // Σε οριζόντια ετικέτα με QR: κωδικός αριστερά, κείμενο δεξιά, ώστε το QR
+  // να πάρει ΟΛΟ το ύψος (τα κελιά διπλασιάζονται σε σχέση με στοίβαξη).
+  const FKEYS = ['4','3','2'];
+  const fitFont = (s, maxW, maxH) => {
+    for (const k of FKEYS){ const [cw, ch] = FONTS[k];
+      if (s.length*cw <= maxW && ch <= maxH) return k; }
+    return '2';
+  };
+  const cmds = [];
+  const isQR = sku && o.type === 'qr';
+  const side = isQR && (W > H) && (txt || o.showSku);
 
-  // --- κωδικός
-  const skuTextH = (sku && o.showSku) ? 24 : 0;
-  let body = H - 2*pad - textH - skuTextH;
-  let cmd = null, contentH = 0;
-  if (sku && o.type === 'qr'){
-    // μέγιστο μέγεθος κελιού που χωράει (QR v1-2 → 21-25 modules)
+  if (side){
+    const qsz = Math.min(H - 2*pad, Math.round(availW * 0.6));
     const mods = sku.length <= 14 ? 21 : 25;
-    let cell = Math.max(2, Math.min(10, Math.floor(Math.min(body, availW) / mods)));
+    const cell = Math.max(2, Math.floor(qsz / mods));
     const size = mods * cell;
-    const x = Math.round((W - size) / 2);
-    contentH = size;
-    cmd = { draw: yy => 'QRCODE ' + x + ',' + yy + ',M,' + cell + ',A,0,"' + sku + '"' };
-  } else if (sku){
-    const widths = c128widths(sku);
-    const modules = widths.reduce((a,b)=>a+b,0);
-    let narrow = Math.max(1, Math.min(4, Math.floor((availW - 32) / modules)));
-    const bw = modules * narrow;
-    const x = Math.max(pad, Math.round((W - bw) / 2));
-    const bh = Math.max(24, body);
-    contentH = bh;
-    cmd = { draw: yy => 'BARCODE ' + x + ',' + yy + ',"128",' + bh + ',' +
-              (o.showSku ? 1 : 0) + ',0,' + narrow + ',' + (narrow*2) + ',"' + sku + '"' };
+    const qx = pad, qy = Math.round((H - size) / 2);
+    cmds.push('QRCODE ' + qx + ',' + qy + ',M,' + cell + ',A,0,"' + sku + '"');
+    // δεξιά στήλη: κείμενο + κωδικός
+    const tx = qx + size + 8;
+    const tw = W - tx - pad;
+    const rows = [];
+    if (txt) rows.push(txt);
+    if (o.showSku) rows.push(sku);
+    let ty = 0, hs = [];
+    for (const r of rows){ const k = fitFont(r, tw, Math.round(H/2)); hs.push([r, k, FONTS[k][1]]); }
+    const totalH = hs.reduce((a, x) => a + x[2] + 4, -4);
+    ty = Math.max(pad, Math.round((H - totalH) / 2));
+    for (const [r, k, ch] of hs){
+      cmds.push('TEXT ' + tx + ',' + ty + ',"' + k + '",0,1,1,"' + r.replace(/"/g,'\\"') + '"');
+      ty += ch + 4;
+    }
+  } else {
+    // στοίβαξη: κείμενο πάνω, κωδικός κάτω
+    let textH = 0, fkey = '3';
+    if (txt){ fkey = fitFont(txt, availW, Math.round(H/3)); textH = FONTS[fkey][1] + 4; }
+    const skuTextH = (sku && o.showSku && !isQR) ? 0 : ((sku && o.showSku) ? 24 : 0);
+    const body = H - 2*pad - textH - skuTextH;
+    let contentH = 0, drawCmd = null;
+    if (isQR){
+      const mods = sku.length <= 14 ? 21 : 25;
+      const cell = Math.max(2, Math.min(12, Math.floor(Math.min(body, availW) / mods)));
+      const size = mods * cell;
+      const x = Math.round((W - size) / 2);
+      contentH = size;
+      drawCmd = yy => 'QRCODE ' + x + ',' + yy + ',M,' + cell + ',A,0,"' + sku + '"';
+    } else if (sku){
+      const widths = c128widths(sku);
+      const modules = widths.reduce((a,b)=>a+b,0);
+      const narrow = Math.max(1, Math.min(4, Math.floor((availW - 32) / modules)));
+      const bw = modules * narrow;
+      const x = Math.max(pad, Math.round((W - bw) / 2));
+      const bh = Math.max(24, body);
+      contentH = bh;
+      drawCmd = yy => 'BARCODE ' + x + ',' + yy + ',"128",' + bh + ',' +
+        (o.showSku ? 1 : 0) + ',0,' + narrow + ',' + (narrow*2) + ',"' + sku + '"';
+    }
+    let y = Math.max(pad, Math.round((H - (textH + contentH + skuTextH)) / 2));
+    if (txt){
+      const cw = FONTS[fkey][0];
+      const tx = Math.max(0, Math.round((W - txt.length * cw) / 2));
+      cmds.push('TEXT ' + tx + ',' + y + ',"' + fkey + '",0,1,1,"' + txt.replace(/"/g,'\\"') + '"');
+      y += textH;
+    }
+    if (drawCmd) cmds.push(drawCmd(y));
+    if (isQR && o.showSku){
+      const k = fitFont(sku, availW, 24);
+      const cw = FONTS[k][0];
+      cmds.push('TEXT ' + Math.max(0, Math.round((W - sku.length*cw)/2)) + ',' +
+                Math.min(H - FONTS[k][1] - 2, y + 4) + ',"' + k + '",0,1,1,"' + sku + '"');
+    }
   }
-
-  const total = textH + contentH + skuTextH;
-  y = Math.max(pad, Math.round((H - total) / 2));
 
   const out = ['SIZE ' + mmStr(o.wmm) + ' mm,' + mmStr(o.hmm) + ' mm',
                'GAP ' + mmStr(o.gapmm) + ' mm,0',
                'DENSITY ' + o.density, 'SPEED ' + o.speed,
-               'DIRECTION ' + (o.rot === 180 ? 0 : 1), 'CLS'];
-  if (txt){
-    const [cw] = FONTS[fkey];
-    const tx = Math.max(0, Math.round((W - txt.length * cw) / 2));
-    out.push('TEXT ' + tx + ',' + y + ',"' + fkey + '",0,1,1,"' + txt.replace(/"/g,'\\"') + '"');
-    y += textH;
-  }
-  if (cmd) out.push(cmd.draw(y));
+               'DIRECTION ' + (o.rot === 180 ? 0 : 1), 'CLS'].concat(cmds);
   out.push('PRINT ' + Math.max(1, o.copies) + ',1');
   return new TextEncoder().encode(out.join('\r\n') + '\r\n');
 }
