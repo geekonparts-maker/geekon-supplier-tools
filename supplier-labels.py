@@ -250,11 +250,11 @@ def _mm(v):
     return str(int(round(v))) if abs(v - round(v)) < 0.05 else f"{v:.1f}"
 
 
-def tspl_bytes(img, w_mm, h_mm, gap_mm=2, copies=1, density=12):
+def tspl_bytes(img, w_mm, h_mm, gap_mm=2, copies=1, density=12, speed=2):
     data, row_bytes = _pack_bits(img, one_is_black=False)  # TSPL: 1 = λευκό
     head = (f"SIZE {_mm(w_mm)} mm,{_mm(h_mm)} mm\r\n"
             f"GAP {_mm(gap_mm)} mm,0\r\n"
-            f"DENSITY {density}\r\nSPEED 2\r\nDIRECTION 1\r\nCLS\r\n"
+            f"DENSITY {density}\r\nSPEED {speed}\r\nDIRECTION 1\r\nCLS\r\n"
             f"BITMAP 0,0,{row_bytes},{img.size[1]},0,").encode("ascii")
     tail = (f"\r\nPRINT {max(1, copies)},1\r\n").encode("ascii")
     return head + data + tail
@@ -423,9 +423,10 @@ def print_raw(printer_name, data: bytes):
         winspool.ClosePrinter(handle)
 
 
-def print_label(printer, language, img, w_mm, h_mm, gap_mm, copies, baud=9600):
+def print_label(printer, language, img, w_mm, h_mm, gap_mm, copies, baud=9600,
+                density=12, speed=2):
     lang = language if language in ("tspl", "zpl") else detect_language(printer)
-    data = (tspl_bytes(img, w_mm, h_mm, gap_mm, copies) if lang == "tspl"
+    data = (tspl_bytes(img, w_mm, h_mm, gap_mm, copies, density, speed) if lang == "tspl"
             else zpl_bytes(img, copies))
     net = host_of(printer)
     com = port_of(printer)
@@ -446,7 +447,7 @@ TR = {
         "printer": " Εκτυπωτής ", "hint": "Σύνδεση: USB (λίστα), Bluetooth (COM…) ή WiFi — γράψε τη διεύθυνση IP, π.χ. 192.168.1.50", "lang_lbl": "Γλώσσα εκτυπωτή:",
         "ui_lang": "Γλώσσα:",
         "presets": "Έτοιμα μεγέθη:", "label": " Ετικέτα ", "w": "Πλάτος (mm):", "h": "Ύψος (mm):",
-        "gap": "Κενό μεταξύ ετικετών (mm):",
+        "gap": "Κενό μεταξύ ετικετών (mm):", "dark": "Ένταση μαύρου (0-15):", "spd": "Ταχύτητα (1-6):",
         "bar": "Barcode (Code 128)", "qr": "QR κώδικας",
         "show_sku": "Κωδικός SKU κάτω από το barcode",
         "print_fr": " Εκτύπωση ", "sku": "Κωδικός SKU:", "text": "Κείμενο:",
@@ -465,7 +466,7 @@ TR = {
         "printer": " Printer ", "hint": "Connection: USB (list), Bluetooth (COM…) or WiFi — type the IP address, e.g. 192.168.1.50", "lang_lbl": "Printer language:",
         "ui_lang": "Language:",
         "presets": "Quick sizes:", "label": " Label ", "w": "Width (mm):", "h": "Height (mm):",
-        "gap": "Gap between labels (mm):",
+        "gap": "Gap between labels (mm):", "dark": "Darkness (0-15):", "spd": "Speed (1-6):",
         "bar": "Barcode (Code 128)", "qr": "QR code",
         "show_sku": "SKU text below barcode",
         "print_fr": " Print ", "sku": "SKU code:", "text": "Text:",
@@ -484,7 +485,7 @@ TR = {
         "printer": " 打印机 ", "hint": "连接方式: USB (列表)、蓝牙 (COM…) 或 WiFi — 输入 IP 地址, 例如 192.168.1.50", "lang_lbl": "打印机语言:",
         "ui_lang": "语言:",
         "presets": "常用尺寸:", "label": " 标签 ", "w": "宽度 (mm):", "h": "高度 (mm):",
-        "gap": "标签间距 (mm):",
+        "gap": "标签间距 (mm):", "dark": "打印浓度 (0-15):", "spd": "打印速度 (1-6):",
         "bar": "条形码 (Code 128)", "qr": "二维码",
         "show_sku": "条码下方显示 SKU",
         "print_fr": " 打印 ", "sku": "SKU 编码:", "text": "文字:",
@@ -572,6 +573,8 @@ def run_gui():
     w_var = tk.StringVar(value=str(cfg.get("w", 25)))
     h_var = tk.StringVar(value=str(cfg.get("h", 15)))
     gap_var = tk.StringVar(value=str(cfg.get("gap", 2)))
+    dark_var = tk.StringVar(value=str(cfg.get("dark", 12)))
+    spd_var = tk.StringVar(value=str(cfg.get("speed", 2)))
     type_var = tk.StringVar(value=cfg.get("bc_type", "bar"))
     show_var = tk.BooleanVar(value=cfg.get("show_sku", True))
     # γρήγορα μεγέθη — τα πεδία mm παραμένουν για ό,τι άλλο χρειαστεί
@@ -582,9 +585,11 @@ def run_gui():
         ttk.Button(fr_ps, text=f"{pw}×{ph}", width=6,
                    command=(lambda a=pw, b=ph: (w_var.set(str(a)), h_var.set(str(b))))
                    ).grid(row=0, column=j, padx=(0, 4))
-    for i, (key, var) in enumerate([("w", w_var), ("h", h_var), ("gap", gap_var)]):
-        reg(ttk.Label(fr_lb), key).grid(row=1, column=2 * i, sticky="w", pady=(8, 0))
-        ttk.Entry(fr_lb, textvariable=var, width=7).grid(row=1, column=2 * i + 1,
+    for i, (key, var) in enumerate([("w", w_var), ("h", h_var), ("gap", gap_var),
+                                    ("dark", dark_var), ("spd", spd_var)]):
+        reg(ttk.Label(fr_lb), key).grid(row=1 + i // 3, column=2 * (i % 3), sticky="w",
+                                        pady=(8, 0))
+        ttk.Entry(fr_lb, textvariable=var, width=7).grid(row=1 + i // 3, column=2 * (i % 3) + 1,
                                                          padx=(4, 16), pady=(8, 0))
     reg(ttk.Radiobutton(fr_lb, value="bar", variable=type_var), "bar").grid(
         row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
@@ -686,6 +691,8 @@ def run_gui():
                     "ui_lang": S["lang"],
                     "w": parse_mm(w_var, 25, 15, 60), "h": parse_mm(h_var, 15, 8, 60),
                     "gap": parse_mm(gap_var, 2, 0, 10),
+                    "dark": int(parse_mm(dark_var, 12, 0, 15)),
+                    "speed": int(parse_mm(spd_var, 2, 1, 6)),
                     "bc_type": type_var.get(), "show_sku": show_var.get(),
                     "last_sku": sku_var.get(), "last_text": txt_var.get()})
         save_config(cfg)
@@ -697,7 +704,9 @@ def run_gui():
             w, h, img = current_img()
             print_label(printer_var.get(), lang_var.get(), img, w, h,
                         parse_mm(gap_var, 2, 0, 10),
-                        int(float(copies_var.get() or 1)))
+                        int(float(copies_var.get() or 1)),
+                        density=int(parse_mm(dark_var, 12, 0, 15)),
+                        speed=int(parse_mm(spd_var, 2, 1, 6)))
             persist()
             status_var.set(T("printed"))
         except Exception as e:
@@ -719,7 +728,9 @@ def run_gui():
                 text = parts[1] if len(parts) > 1 else ""
                 qty = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
                 img = render_label(w, h, sku, text, type_var.get(), show_var.get())
-                print_label(printer_var.get(), lang_var.get(), img, w, h, gap, qty)
+                print_label(printer_var.get(), lang_var.get(), img, w, h, gap, qty,
+                            density=int(parse_mm(dark_var, 12, 0, 15)),
+                            speed=int(parse_mm(spd_var, 2, 1, 6)))
                 n += qty
             persist()
             status_var.set(T("printed_n", n=n))
