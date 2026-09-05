@@ -124,8 +124,8 @@
     <div class="fld">
       <label id="t-type">条码类型</label>
       <div class="chips">
-        <button class="chip on" id="c-bar" data-type="bar">条形码 Code 128</button>
-        <button class="chip" id="c-qr" data-type="qr">二维码 QR</button>
+        <button class="chip" id="c-bar" data-type="bar">条形码 Code 128</button>
+        <button class="chip on" id="c-qr" data-type="qr">二维码 QR</button>
       </div>
     </div>
     <div class="fld" style="margin-bottom:0">
@@ -589,7 +589,7 @@ function drawLabel(wmm, hmm, sku, text, type, showSku){
 /* ---- Κατάσταση + UI ---- */
 const $ = id => document.getElementById(id);
 const st = JSON.parse(localStorage.getItem('gl-state') || '{}');
-let type = st.type || 'bar';
+let type = st.type || 'qr';
 if (st.w) $('w').value = st.w;
 if (st.h) $('h').value = st.h;
 if (st.showsku === false) $('showsku').checked = false;
@@ -621,7 +621,8 @@ $('uilang').onchange = e => { L = e.target.value; localStorage.setItem('gl-lang'
     document.querySelectorAll('.chip[data-type]').forEach(o=>o.classList.toggle('on', o===b));
     render(); };
 });
-if (type === 'qr'){ $('c-bar').classList.remove('on'); $('c-qr').classList.add('on'); }
+if (type === 'bar'){ $('c-qr').classList.remove('on'); $('c-bar').classList.add('on'); }
+else { $('c-bar').classList.remove('on'); $('c-qr').classList.add('on'); }
 
 function vals(){
   const w = Math.min(Math.max(+$('w').value || 25, 10), 120);
