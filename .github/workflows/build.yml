@@ -1,0 +1,108 @@
+name: Build supplier tools
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supplier-labels.py'
+      - 'supplier-labels.html'
+      - 'android/**'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Sync web UI into app assets
+        run: cp supplier-labels.html android/app/src/main/assets/app.html
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build APK
+        working-directory: android
+        run: gradle assembleRelease --no-daemon
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk GeekOnLabels.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: GeekOnLabels.apk
+
+  windows:
+    name: Windows program
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install pyinstaller pillow qrcode
+      - name: Build folder version
+        run: pyinstaller --onedir --noconsole --name GeekOnSupplierLabels supplier-labels.py
+      - name: Zip folder version
+        run: Compress-Archive -Path dist/GeekOnSupplierLabels/* -DestinationPath GeekOnSupplierLabels-windows.zip
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: GeekOnSupplierLabels-windows.zip
+
+  release:
+    name: Publish downloads
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dl
+      - name: Collect files
+        run: |
+          cp dl/apk/GeekOnLabels.apk .
+          cp dl/windows/GeekOnSupplierLabels-windows.zip .
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: GeekOn Label Tools — Download
+          body: |
+            ## 📱 Android (tablet / phone) — recommended
+            **`GeekOnLabels.apk`** — prints **directly** to your thermal printer
+            over Bluetooth or WiFi.
+            安卓应用：通过**蓝牙**或 **WiFi** 直接打印标签。
+
+            1. Download and install the APK (allow "install from unknown sources")
+            2. Pair the printer first in Android **Settings → Bluetooth**
+               (WiFi printers: just type the printer's IP in the app)
+            3. Open the app → pick the printer → type the SKU → tap Print
+
+            1. 下载并安装 APK（如提示，请允许「安装未知来源应用」）
+            2. 先在 设置 → 蓝牙 中配对打印机（WiFi 打印机：在应用里直接输入 IP）
+            3. 打开应用 → 选择打印机 → 输入 SKU → 点击「打印」
+
+            ## 💻 Windows PC
+            **`GeekOnSupplierLabels-windows.zip`** — unzip and run
+            `GeekOnSupplierLabels.exe` inside the folder. Prints directly over
+            USB, Bluetooth (COM port) or WiFi (IP address).
+            解压后运行文件夹内的 `GeekOnSupplierLabels.exe`。
+
+            ## 🌐 Any device
+            **`supplier-labels.html`** — open in a browser, no installation.
+            Creates the label as an exact-size image to print from any app.
+            在浏览器中打开，无需安装。
+
+            ---
+            Labels 25×15mm (and other sizes) · Code 128 or QR · batch printing
+            · 中文 / English / Ελληνικά
+          files: |
+            GeekOnLabels.apk
+            GeekOnSupplierLabels-windows.zip
+            supplier-labels.html

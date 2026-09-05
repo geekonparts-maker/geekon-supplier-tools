@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>GeekOn 标签打印 / Label printing</title>
+</head>
+<body>
+<style>
+  :root{ --org:#ef8a1d; --dark:#131313; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body{ margin:0; background:#f4f4f6; color:#1a1a1a;
+        font-family:"Microsoft YaHei","PingFang SC","Segoe UI",Arial,sans-serif; }
+  header{ background:var(--dark); color:#fff; padding:12px 16px; display:flex;
+          align-items:center; gap:12px; position:sticky; top:0; z-index:10; }
+  header b{ font-size:17px; letter-spacing:.02em; }
+  header .sp{ flex:1; }
+  select,input,button,textarea{ font:inherit; }
+  .lang{ background:#2a2a2a; color:#fff; border:1px solid #444; border-radius:8px;
+         padding:8px 10px; font-size:15px; }
+  .wrap{ max-width:900px; margin:0 auto; padding:14px; }
+  .card{ background:#fff; border:1px solid #e4e4e8; border-radius:12px;
+         padding:14px; margin-bottom:14px; }
+  .card h2{ margin:0 0 12px; font-size:14px; color:var(--org); letter-spacing:.06em; }
+  label{ display:block; font-size:13.5px; font-weight:600; margin:0 0 6px; }
+  .fld{ margin-bottom:14px; }
+  input[type=text],input[type=number],textarea{ width:100%; border:2px solid #e2e2e2;
+    border-radius:9px; background:#fafafa; padding:12px 13px; font-size:16px; }
+  input#sku{ font-weight:700; letter-spacing:.06em; }
+  textarea{ resize:vertical; font-family:ui-monospace,Consolas,monospace; font-size:14px; }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .row > div{ flex:1 1 120px; }
+  .chips{ display:flex; gap:8px; flex-wrap:wrap; }
+  .chip{ border:0; border-radius:8px; padding:11px 14px; font-size:14px; font-weight:700;
+         background:#f0f0f2; color:#555; cursor:pointer; }
+  .chip.on{ background:var(--dark); color:var(--org); }
+  .btn{ width:100%; border:0; border-radius:10px; padding:16px; font-size:17px;
+        font-weight:700; background:var(--org); color:var(--dark); cursor:pointer; }
+  .btn.sec{ background:var(--dark); color:#fff; font-size:15px; padding:13px; margin-top:10px; }
+  .prev{ display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .paper{ background:#fff; border:2px solid var(--dark); border-radius:2px;
+          display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .paper img{ display:block; image-rendering:pixelated; }
+  .hint{ font-size:12.5px; color:#888; line-height:1.55; }
+  .warn{ background:#fdeaea; border:1px solid #f0bcbc; color:#c22; border-radius:8px;
+         padding:9px 12px; font-size:13px; font-weight:600; margin-bottom:10px; }
+  .ok{ background:#eaf7ea; border:1px solid #bfe3bf; color:#237a23; border-radius:8px;
+       padding:9px 12px; font-size:13px; font-weight:600; margin-bottom:10px; }
+  .steps{ font-size:13px; color:#555; line-height:1.7; padding-left:18px; margin:6px 0 0; }
+</style>
+
+<header>
+  <b id="t-title">标签打印</b><span class="sp"></span>
+  <select class="lang" id="uilang">
+    <option value="zh">中文</option><option value="en">English</option><option value="el">Ελληνικά</option>
+  </select>
+</header>
+
+<div class="wrap">
+  <div class="card" id="prcard" style="display:none">
+    <h2 id="t-h-printer">打印机</h2>
+    <div class="fld">
+      <label id="t-device">蓝牙打印机</label>
+      <div style="display:flex;gap:8px">
+        <select id="dev" style="flex:1;border:2px solid #e2e2e2;border-radius:9px;background:#fafafa;padding:12px;font-size:15px"></select>
+        <button class="chip" id="refresh">↻</button>
+      </div>
+    </div>
+    <div class="fld"><label id="t-ip">WiFi 打印机 IP (可选)</label>
+      <input type="text" id="ip" placeholder="192.168.1.50" inputmode="decimal"></div>
+    <div class="row">
+      <div class="fld"><label id="t-qty">数量</label>
+        <input type="number" id="qty" value="1" min="1" max="999"></div>
+      <div class="fld"><label id="t-gap">标签间距 (mm)</label>
+        <input type="number" id="gap" value="2" min="0" max="10" step="0.5"></div>
+    </div>
+    <div id="pstatus" class="ok" style="display:none"></div>
+    <button class="btn" id="direct">🖨 直接打印</button>
+  </div>
+
+  <div class="card">
+    <h2 id="t-h-label">标签</h2>
+    <div class="fld">
+      <label id="t-presets">常用尺寸</label>
+      <div class="chips" id="presets"></div>
+    </div>
+    <div class="row">
+      <div class="fld"><label id="t-w">宽度 (mm)</label>
+        <input type="number" id="w" value="25" min="10" max="120" step="1"></div>
+      <div class="fld"><label id="t-h">高度 (mm)</label>
+        <input type="number" id="h" value="15" min="8" max="120" step="1"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 id="t-h-content">内容</h2>
+    <div class="fld"><label id="t-sku">SKU 编码</label>
+      <input type="text" id="sku" placeholder="app043" autocapitalize="off" autocomplete="off"></div>
+    <div class="fld"><label id="t-text">文字 (可选)</label>
+      <input type="text" id="text" placeholder="iPhone 13"></div>
+    <div class="fld">
+      <label id="t-type">条码类型</label>
+      <div class="chips">
+        <button class="chip on" id="c-bar" data-type="bar">条形码 Code 128</button>
+        <button class="chip" id="c-qr" data-type="qr">二维码 QR</button>
+      </div>
+    </div>
+    <div class="fld" style="margin-bottom:0">
+      <label style="display:flex;align-items:center;gap:10px;font-weight:600;cursor:pointer">
+        <input type="checkbox" id="showsku" checked style="width:20px;height:20px;accent-color:#ef8a1d">
+        <span id="t-showsku">条码下方显示 SKU</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 id="t-h-preview">预览</h2>
+    <div id="warn" class="warn" style="display:none"></div>
+    <div class="prev">
+      <div class="paper" id="paper"><img id="pv" alt=""></div>
+      <div class="hint" id="dims"></div>
+    </div>
+    <button class="btn" id="save" style="margin-top:14px">📥 保存图片</button>
+    <button class="btn sec" id="printbtn">🖨 打印</button>
+    <ol class="steps" id="steps"></ol>
+  </div>
+
+  <div class="card">
+    <h2 id="t-h-batch">批量</h2>
+    <div class="fld"><label id="t-batch">每行一个标签 — SKU;文字</label>
+      <textarea id="batch" rows="5" placeholder="GKP-1001;Screen A54&#10;GKP-1002;Battery A24"></textarea></div>
+    <button class="btn sec" id="savebatch" style="margin-top:0">📥 保存全部图片</button>
+  </div>
+</div>
+
+<div id="printarea" style="display:none"></div>
+
+<script>
+/* ---- Code 128 + QR encoders (επαληθευμένοι) ---- */
+const C128 = ['212222','222122','222221','121223','121322','131222','122213','122312','132212','221213',
+  '221312','231212','112232','122132','122231','113222','123122','123221','223211','221132',
+  '221231','213212','223112','312131','311222','321122','321221','312212','322112','322211',
+  '212123','212321','232121','111323','131123','131321','112313','132113','132311','211313',
+  '231113','231311','112133','112331','132131','113123','113321','133121','313121','211331',
+  '231131','213113','213311','213131','311123','311321','331121','312113','312311','332111',
+  '314111','221411','431111','111224','111422','121124','121421','141122','141221','112214',
+  '112412','122114','122411','142112','142211','241211','221114','413111','241112','134111',
+  '111242','121142','121241','114212','124112','124211','411212','421112','421211','212141',
+  '214121','412121','111143','111341','131141','114113','114311','411113','411311','113141',
+  '114131','311141','411131','211412','211214','211232','2331112'];
+function c128widths(data){
+  if (!data) return [];
+  let start, values;
+  if (/^\d+$/.test(data) && data.length % 2 === 0){
+    start = 105; values = [];
+    for (let i=0;i<data.length;i+=2) values.push(parseInt(data.slice(i,i+2),10));
+  } else {
+    start = 104; values = [];
+    for (const ch of data){ let o = ch.charCodeAt(0); if (o<32||o>126) o = 63; values.push(o-32); }
+  }
+  let check = start;
+  values.forEach((v,i)=>{ check += v*(i+1); });
+  const codes = [start, ...values, check%103, 106];
+  const out = [];
+  for (const c of codes) for (const d of C128[c]) out.push(+d);
+  return out;
+}
+
+function qrMatrix(text){
+  const data = [];
+  for (const ch of String(text)) {
+    const cp = ch.codePointAt(0);
+    if (cp < 128) data.push(cp);
+    else { // UTF-8
+      const enc = unescape(encodeURIComponent(ch));
+      for (let i = 0; i < enc.length; i++) data.push(enc.charCodeAt(i));
+    }
+  }
+  // Χωρητικότητες byte-mode EC L: v1..v4
+  const CAP = [17, 32, 53, 78];
+  const ECN = [7, 10, 15, 20];       // EC codewords (1 block, v1-4 L)
+  const TOTAL = [26, 44, 70, 100];   // συνολικά codewords
+  let ver = 0;
+  while (ver < 4 && data.length > CAP[ver]) ver++;
+  if (ver >= 4) throw new Error('Πολύ μεγάλο κείμενο για QR (max 78 bytes)');
+  const version = ver + 1;
+  const total = TOTAL[ver], ecn = ECN[ver], dcn = total - ecn;
+
+  // ---- bitstream: mode 0100, μήκος (8 bit), δεδομένα, terminator, padding
+  const bits = [];
+  const putBits = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+  putBits(0b0100, 4);
+  putBits(data.length, 8);
+  for (const b of data) putBits(b, 8);
+  const capBits = dcn * 8;
+  putBits(0, Math.min(4, capBits - bits.length));       // terminator
+  while (bits.length % 8) bits.push(0);
+  const dcw = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    let b = 0; for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
+    dcw.push(b);
+  }
+  const PAD = [0xEC, 0x11];
+  for (let i = 0; dcw.length < dcn; i++) dcw.push(PAD[i % 2]);
+
+  // ---- Reed-Solomon GF(256), poly 0x11D
+  const EXP = new Array(512), LOG = new Array(256);
+  for (let i = 0, x = 1; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11D; }
+  for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  const gmul = (a, b) => (a && b) ? EXP[LOG[a] + LOG[b]] : 0;
+  let gen = [1];
+  for (let i = 0; i < ecn; i++) {
+    const next = new Array(gen.length + 1).fill(0);
+    for (let j = 0; j < gen.length; j++) {
+      next[j] ^= gmul(gen[j], EXP[i]);
+      next[j + 1] ^= gen[j];
+    }
+    gen = next;
+  }
+  gen.reverse(); // gen[0]=1 πρώτος όρος
+  const ecw = new Array(ecn).fill(0);
+  for (const d of dcw) {
+    const factor = d ^ ecw[0];
+    ecw.shift(); ecw.push(0);
+    if (factor) for (let j = 0; j < ecn; j++) ecw[j] ^= gmul(gen[j + 1], factor);
+  }
+  const codewords = dcw.concat(ecw);
+
+  // ---- πλέγμα
+  const n = 17 + version * 4;
+  const M = Array.from({ length: n }, () => new Array(n).fill(null)); // null = ελεύθερο για data
+
+  const setFinder = (r, c) => {
+    for (let dr = -1; dr <= 7; dr++) for (let dc = -1; dc <= 7; dc++) {
+      const rr = r + dr, cc = c + dc;
+      if (rr < 0 || rr >= n || cc < 0 || cc >= n) continue;
+      const inside = dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6;
+      const ring = inside && (dr === 0 || dr === 6 || dc === 0 || dc === 6);
+      const core = dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4;
+      M[rr][cc] = (inside && (ring || core)) ? 1 : 0;
+    }
+  };
+  setFinder(0, 0); setFinder(0, n - 7); setFinder(n - 7, 0);
+  // timing
+  for (let i = 8; i < n - 8; i++) {
+    if (M[6][i] === null) M[6][i] = (i % 2) ? 0 : 1;
+    if (M[i][6] === null) M[i][6] = (i % 2) ? 0 : 1;
+  }
+  // alignment (v2+: κέντρο στο n-7)
+  if (version >= 2) {
+    const c = n - 7;
+    for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+      const ring = Math.max(Math.abs(dr), Math.abs(dc));
+      M[c + dr][c + dc] = (ring === 1) ? 0 : 1;
+    }
+  }
+  // dark module + δέσμευση περιοχών format info
+  M[n - 8][8] = 1;
+  const fmtCells = [];
+  for (let i = 0; i <= 8; i++) {
+    if (i !== 6) { if (M[8][i] === null) { M[8][i] = 0; } fmtCells.push(0); }
+    if (i !== 6) { if (M[i][8] === null) { M[i][8] = 0; } }
+  }
+  for (let i = 0; i < 8; i++) {
+    if (M[8][n - 1 - i] === null) M[8][n - 1 - i] = 0;
+    if (M[n - 1 - i][8] === null) M[n - 1 - i][8] = 0;
+  }
+  if (M[8][8] === null) M[8][8] = 0;
+
+  // ---- τοποθέτηση δεδομένων (zigzag) — κρατάμε λίστα θέσεων data
+  const dataPos = [];
+  let upward = true;
+  for (let col = n - 1; col > 0; col -= 2) {
+    if (col === 6) col--;
+    for (let k = 0; k < n; k++) {
+      const r = upward ? (n - 1 - k) : k;
+      for (const c of [col, col - 1]) {
+        if (M[r][c] === null) dataPos.push([r, c]);
+      }
+    }
+    upward = !upward;
+  }
+  const dataBits = [];
+  for (const cw of codewords) for (let i = 7; i >= 0; i--) dataBits.push((cw >> i) & 1);
+  while (dataBits.length < dataPos.length) dataBits.push(0); // remainder bits
+
+  // ---- δοκιμή και των 8 masks, επιλογή με penalty
+  const MASKS = [
+    (r, c) => (r + c) % 2 === 0,
+    (r, c) => r % 2 === 0,
+    (r, c) => c % 3 === 0,
+    (r, c) => (r + c) % 3 === 0,
+    (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+    (r, c) => (r * c) % 2 + (r * c) % 3 === 0,
+    (r, c) => ((r * c) % 2 + (r * c) % 3) % 2 === 0,
+    (r, c) => ((r + c) % 2 + (r * c) % 3) % 2 === 0,
+  ];
+  const bch15 = v => {
+    let x = v << 10;
+    const g = 0b10100110111;
+    for (let i = 14; i >= 10; i--) if ((x >> i) & 1) x ^= g << (i - 10);
+    return ((v << 10) | x) ^ 0b101010000010010;
+  };
+  const penalty = G => {
+    let p = 0;
+    // κανόνας 1: σειρές/στήλες με ≥5 ίδια
+    for (let dir = 0; dir < 2; dir++) for (let i = 0; i < n; i++) {
+      let run = 1;
+      for (let j = 1; j < n; j++) {
+        const a = dir ? G[j][i] : G[i][j], b = dir ? G[j - 1][i] : G[i][j - 1];
+        if (a === b) { run++; } else { if (run >= 5) p += 3 + run - 5; run = 1; }
+      }
+      if (run >= 5) p += 3 + run - 5;
+    }
+    // κανόνας 2: 2x2 μπλοκ
+    for (let r = 0; r < n - 1; r++) for (let c = 0; c < n - 1; c++) {
+      const v = G[r][c];
+      if (G[r][c + 1] === v && G[r + 1][c] === v && G[r + 1][c + 1] === v) p += 3;
+    }
+    // κανόνας 4: ισορροπία μαύρου
+    let dark = 0; for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) dark += G[r][c];
+    p += Math.floor(Math.abs(dark * 100 / (n * n) - 50) / 5) * 10;
+    return p;
+  };
+
+  let best = null, bestP = Infinity;
+  for (let m = 0; m < 8; m++) {
+    const G = M.map(row => row.slice());
+    dataPos.forEach(([r, c], i) => {
+      let v = dataBits[i];
+      if (MASKS[m](r, c)) v ^= 1;
+      G[r][c] = v;
+    });
+    // format info: EC L = 01, mask m
+    const fmt = bch15((0b01 << 3) | m);
+    const fbit = i => (fmt >> (14 - i)) & 1;
+    // αντίγραφο 1 (γύρω από πάνω-αριστερά finder)
+    const coordsA = [[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
+    coordsA.forEach(([r, c], i) => { G[r][c] = fbit(i); });
+    // αντίγραφο 2
+    for (let i = 0; i < 7; i++) G[n - 1 - i][8] = fbit(i);
+    for (let i = 7; i < 15; i++) G[8][n - 15 + i] = fbit(i);
+    G[n - 8][8] = 1; // dark module πάντα
+    const p = penalty(G);
+    if (p < bestP) { bestP = p; best = G; }
+  }
+  return best;
+}
+
+/* ---- Εντολές εκτυπωτή (TSPL / ZPL) ---- */
+// Παραγωγή TSPL/ZPL από canvas — ίδια λογική με την Python έκδοση
+function packBits(px, W, H, oneIsBlack){
+  const rowBytes = (W + 7) >> 3;
+  const out = new Uint8Array(rowBytes * H);
+  for (let y = 0; y < H; y++){
+    const base = y * rowBytes;
+    for (let x = 0; x < W; x++){
+      const black = px[(y*W + x) * 4] < 128;
+      const bit = oneIsBlack ? black : !black;
+      if (bit) out[base + (x >> 3)] |= 0x80 >> (x & 7);
+    }
+  }
+  return { data: out, rowBytes };
+}
+function mmStr(v){ return (Math.abs(v - Math.round(v)) < 0.05) ? String(Math.round(v)) : v.toFixed(1); }
+function tsplBytes(px, W, H, wmm, hmm, gapmm, copies, density){
+  const { data, rowBytes } = packBits(px, W, H, false);   // TSPL: 1 = λευκό
+  const head = new TextEncoder().encode(
+    'SIZE ' + mmStr(wmm) + ' mm,' + mmStr(hmm) + ' mm\r\n' +
+    'GAP ' + mmStr(gapmm) + ' mm,0\r\n' +
+    'DENSITY ' + (density || 12) + '\r\nSPEED 2\r\nDIRECTION 1\r\nCLS\r\n' +
+    'BITMAP 0,0,' + rowBytes + ',' + H + ',0,');
+  const tail = new TextEncoder().encode('\r\nPRINT ' + Math.max(1, copies) + ',1\r\n');
+  const out = new Uint8Array(head.length + data.length + tail.length);
+  out.set(head, 0); out.set(data, head.length); out.set(tail, head.length + data.length);
+  return out;
+}
+function zplBytes(px, W, H, copies){
+  const { data, rowBytes } = packBits(px, W, H, true);     // ZPL: 1 = μαύρο
+  const total = rowBytes * H;
+  let hex = '';
+  const HX = '0123456789ABCDEF';
+  for (const b of data) hex += HX[b >> 4] + HX[b & 15];
+  return new TextEncoder().encode(
+    '^XA^PW' + W + '^LL' + H + '^LH0,0^FO0,0^GFA,' + total + ',' + total + ',' + rowBytes + ',' +
+    hex + '^FS^PQ' + Math.max(1, copies) + '^XZ');
+}
+
+/* ---- Μεταφράσεις ---- */
+const TR = {
+  zh:{ title:"标签打印", hlabel:"标签", presets:"常用尺寸", w:"宽度 (mm)", h:"高度 (mm)",
+       hcontent:"内容", sku:"SKU 编码", text:"文字 (可选)", type:"条码类型",
+       showsku:"条码下方显示 SKU", hpreview:"预览", save:"📥 保存图片", print:"🖨 打印",
+       hbatch:"批量", batch:"每行一个标签 — SKU;文字", savebatch:"📥 保存全部图片",
+       dims:"{w} × {h} mm — 203 dpi 实际尺寸",
+       steps:["点击「保存图片」，图片会保存到相册/下载文件夹","打开您的标签打印机 App","选择该图片并打印（尺寸 {w}×{h} mm，请勿缩放）"],
+       need:"请先输入 SKU 编码", toobig:"编码太长，请改用二维码或更大的标签", saved:"已保存 {n} 张图片 ✓",
+       hprinter:"打印机", device:"蓝牙打印机", ip:"WiFi 打印机 IP (可选)", qty:"数量",
+       direct:"🖨 直接打印", refresh:"↻ 刷新", printing:"打印中…", done:"打印完成 ✓",
+       perr:"打印失败: {e}", nodev:"请先在系统设置中配对蓝牙打印机", gap:"标签间距 (mm)",
+       batchprint:"🖨 打印全部" },
+  en:{ title:"Label printing", hlabel:"Label", presets:"Quick sizes", w:"Width (mm)", h:"Height (mm)",
+       hcontent:"Content", sku:"SKU code", text:"Text (optional)", type:"Code type",
+       showsku:"Show SKU below barcode", hpreview:"Preview", save:"📥 Save image", print:"🖨 Print",
+       hbatch:"Batch", batch:"One label per line — SKU;Text", savebatch:"📥 Save all images",
+       dims:"{w} × {h} mm — 203 dpi, exact size",
+       steps:["Tap «Save image» — it goes to your Downloads/Gallery","Open your label printer app","Pick the image and print it (size {w}×{h} mm, no scaling)"],
+       need:"Enter a SKU code first", toobig:"Code too long — use QR or a bigger label", saved:"Saved {n} image(s) ✓",
+       hprinter:"Printer", device:"Bluetooth printer", ip:"WiFi printer IP (optional)", qty:"Quantity",
+       direct:"🖨 Print now", refresh:"↻ Refresh", printing:"Printing…", done:"Printed ✓",
+       perr:"Print failed: {e}", nodev:"Pair the Bluetooth printer in Android settings first",
+       gap:"Gap between labels (mm)", batchprint:"🖨 Print all" },
+  el:{ title:"Εκτύπωση ετικετών", hlabel:"Ετικέτα", presets:"Έτοιμα μεγέθη", w:"Πλάτος (mm)", h:"Ύψος (mm)",
+       hcontent:"Περιεχόμενο", sku:"Κωδικός SKU", text:"Κείμενο (προαιρετικό)", type:"Τύπος κωδικού",
+       showsku:"Εμφάνιση SKU κάτω από το barcode", hpreview:"Προεπισκόπηση", save:"📥 Αποθήκευση εικόνας",
+       print:"🖨 Εκτύπωση", hbatch:"Μαζικά", batch:"Μία γραμμή ανά ετικέτα — SKU;Κείμενο",
+       savebatch:"📥 Αποθήκευση όλων", dims:"{w} × {h} mm — 203 dpi, φυσικό μέγεθος",
+       steps:["Πάτα «Αποθήκευση εικόνας» — πάει στις Λήψεις/Συλλογή","Άνοιξε την εφαρμογή του εκτυπωτή","Διάλεξε την εικόνα και τύπωσέ την ({w}×{h} mm, χωρίς κλίμακα)"],
+       need:"Γράψε πρώτα κωδικό SKU", toobig:"Πολύ μεγάλος κωδικός — δοκίμασε QR ή μεγαλύτερη ετικέτα",
+       saved:"Αποθηκεύτηκαν {n} εικόνες ✓",
+       hprinter:"Εκτυπωτής", device:"Εκτυπωτής Bluetooth", ip:"IP εκτυπωτή WiFi (προαιρετικό)",
+       qty:"Τεμάχια", direct:"🖨 Άμεση εκτύπωση", refresh:"↻ Ανανέωση", printing:"Εκτύπωση…",
+       done:"Τυπώθηκε ✓", perr:"Αποτυχία εκτύπωσης: {e}",
+       nodev:"Ζευγάρωσε πρώτα τον εκτυπωτή Bluetooth από τις ρυθμίσεις",
+       gap:"Κενό μεταξύ ετικετών (mm)", batchprint:"🖨 Εκτύπωση όλων" },
+};
+let L = localStorage.getItem('gl-lang') || 'zh';
+const T = (k, kw) => { let s = (TR[L]||TR.zh)[k] || k;
+  if (kw) for (const p in kw) s = s.split('{'+p+'}').join(kw[p]);
+  return s; };
+
+/* ---- Σχεδίαση ετικέτας (203 dpi, αμιγώς ασπρόμαυρη) ---- */
+const D = 8;
+function drawLabel(wmm, hmm, sku, text, type, showSku){
+  const W = Math.round(wmm*D), H = Math.round(hmm*D);
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0,0,W,H);
+  x.fillStyle = '#000'; x.textAlign = 'center'; x.textBaseline = 'top';
+  const pad = Math.round(1.2*D), avail = W - 2*pad, gap = 4;
+  sku = (sku||'').trim(); text = (text||'').trim();
+  let warn = '';
+  let textPx = Math.max(14, Math.min(26, Math.round(H/5)));
+  const skuPx = Math.max(13, Math.min(22, Math.round(H/6)));
+  let blocks = 0;
+  if (text) blocks += textPx + gap;
+  let qr = null, widths = null, mod = 0, barH = 0, bw = 0;
+  if (sku){
+    if (type === 'qr'){
+      try { qr = qrMatrix(sku); } catch(e){ warn = T('toobig'); }
+      if (qr){
+        const n = qr.length;
+        const room = Math.min(avail, H - 2*pad - blocks - (showSku ? skuPx+2 : 0));
+        mod = Math.max(2, Math.min(12, Math.floor(room/n)));
+        bw = n*mod; blocks += bw + (showSku ? skuPx+2 : 0);
+      }
+    } else {
+      widths = c128widths(sku);
+      const total = widths.reduce((a,b)=>a+b,0);
+      mod = 4;
+      while (mod > 1 && total*mod + 2*Math.max(10*mod, 16) > avail) mod--;
+      if (total*mod + 2*Math.max(10*mod,16) > avail) warn = T('toobig');
+      bw = total*mod;
+      barH = Math.max(24, H - 2*pad - blocks - (showSku ? skuPx+2 : 0));
+      blocks += barH + (showSku ? skuPx+2 : 0);
+    }
+  }
+  let y = Math.max(pad, Math.round((H-blocks)/2));
+  if (text){
+    x.font = 'bold ' + textPx + 'px Arial';
+    while (x.measureText(text).width > avail && textPx > 10){ textPx -= 2; x.font = 'bold '+textPx+'px Arial'; }
+    x.fillText(text, W/2, y, avail); y += textPx + gap;
+  }
+  if (sku && qr){
+    const x0 = Math.round((W-bw)/2);
+    for (let r=0;r<qr.length;r++) for (let c=0;c<qr.length;c++)
+      if (qr[r][c]) x.fillRect(x0+c*mod, y+r*mod, mod, mod);
+    y += bw;
+  } else if (sku && widths){
+    let px = Math.max(pad, Math.round((W-bw)/2)), dark = true;
+    for (const m of widths){ const seg = m*mod; if (dark) x.fillRect(px, y, seg, barH); px += seg; dark = !dark; }
+    y += barH;
+  }
+  if (sku && showSku){
+    x.font = '600 ' + skuPx + 'px Arial';
+    x.fillText(sku, W/2, y+2, avail);
+  }
+  const img = x.getImageData(0,0,W,H), p = img.data;
+  for (let i=0;i<p.length;i+=4){ const v = (p[i]+p[i+1]+p[i+2])/3 < 176 ? 0 : 255; p[i]=p[i+1]=p[i+2]=v; p[i+3]=255; }
+  x.putImageData(img,0,0);
+  return { canvas: cv, warn };
+}
+
+/* ---- Κατάσταση + UI ---- */
+const $ = id => document.getElementById(id);
+const st = JSON.parse(localStorage.getItem('gl-state') || '{}');
+let type = st.type || 'bar';
+if (st.w) $('w').value = st.w;
+if (st.h) $('h').value = st.h;
+if (st.showsku === false) $('showsku').checked = false;
+$('uilang').value = L;
+
+const PRESETS = [[25,15],[28,20],[30,20],[40,30],[50,30]];
+PRESETS.forEach(([pw,ph])=>{
+  const b = document.createElement('button');
+  b.className = 'chip'; b.textContent = pw+'×'+ph;
+  b.onclick = ()=>{ $('w').value = pw; $('h').value = ph; render(); };
+  $('presets').appendChild(b);
+});
+
+function applyLang(){
+  document.documentElement.lang = L==='zh' ? 'zh-CN' : (L==='el' ? 'el' : 'en');
+  $('t-title').textContent = T('title');
+  const map = { 't-h-label':'hlabel','t-presets':'presets','t-w':'w','t-h':'h',
+    't-h-content':'hcontent','t-sku':'sku','t-text':'text','t-type':'type',
+    't-showsku':'showsku','t-h-preview':'hpreview','t-h-batch':'hbatch','t-batch':'batch' };
+  for (const id in map) $(id).textContent = T(map[id]);
+  $('save').textContent = T('save');
+  $('printbtn').textContent = T('print');
+  $('savebatch').textContent = T('savebatch');
+  render();
+}
+$('uilang').onchange = e => { L = e.target.value; localStorage.setItem('gl-lang', L); applyLang(); };
+[...document.querySelectorAll('.chip[data-type]')].forEach(b=>{
+  b.onclick = ()=>{ type = b.dataset.type;
+    document.querySelectorAll('.chip[data-type]').forEach(o=>o.classList.toggle('on', o===b));
+    render(); };
+});
+if (type === 'qr'){ $('c-bar').classList.remove('on'); $('c-qr').classList.add('on'); }
+
+function vals(){
+  const w = Math.min(Math.max(+$('w').value || 25, 10), 120);
+  const h = Math.min(Math.max(+$('h').value || 15, 8), 120);
+  return { w, h, sku: $('sku').value, text: $('text').value,
+           showSku: $('showsku').checked };
+}
+let last = null;
+function render(){
+  const v = vals();
+  const { canvas, warn } = drawLabel(v.w, v.h, v.sku, v.text, type, v.showSku);
+  last = canvas;
+  $('pv').src = canvas.toDataURL('image/png');
+  const scale = Math.min(3, Math.max(1.4, 300 / canvas.width));
+  $('pv').style.width = Math.round(canvas.width*scale)+'px';
+  $('pv').style.height = Math.round(canvas.height*scale)+'px';
+  $('dims').textContent = T('dims', { w: v.w, h: v.h });
+  $('warn').style.display = warn ? 'block' : 'none';
+  $('warn').textContent = warn;
+  const ol = $('steps'); ol.innerHTML = '';
+  T('steps').forEach(s=>{ const li = document.createElement('li');
+    li.textContent = s.split('{w}').join(v.w).split('{h}').join(v.h); ol.appendChild(li); });
+  localStorage.setItem('gl-state', JSON.stringify({ w:v.w, h:v.h, type, showsku:v.showSku }));
+}
+['w','h','sku','text'].forEach(id => $(id).addEventListener('input', render));
+$('showsku').addEventListener('change', render);
+
+function saveCanvas(cv, name){
+  return new Promise(res=>{
+    cv.toBlob(b=>{
+      const url = URL.createObjectURL(b);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>{ URL.revokeObjectURL(url); res(); }, 400);
+    }, 'image/png');
+  });
+}
+const safe = s => (s||'label').replace(/[^\w一-龥-]+/g,'_').slice(0,24);
+
+$('save').onclick = async ()=>{
+  const v = vals();
+  if (!v.sku.trim() && !v.text.trim()) return alert(T('need'));
+  await saveCanvas(last, safe(v.sku||v.text) + '_' + v.w + 'x' + v.h + '.png');
+};
+
+$('savebatch').onclick = async ()=>{
+  const v = vals();
+  const lines = $('batch').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  if (!lines.length) return alert(T('need'));
+  let n = 0;
+  for (const ln of lines){
+    const [sku, text] = ln.split(';').map(s=>(s||'').trim());
+    const { canvas } = drawLabel(v.w, v.h, sku, text||'', type, v.showSku);
+    await saveCanvas(canvas, safe(sku) + '_' + v.w + 'x' + v.h + '.png');
+    n++;
+  }
+  alert(T('saved', { n }));
+};
+
+$('printbtn').onclick = ()=>{
+  const v = vals();
+  if (!v.sku.trim() && !v.text.trim()) return alert(T('need'));
+  let css = document.getElementById('printcss');
+  if (!css){ css = document.createElement('style'); css.id = 'printcss'; document.head.appendChild(css); }
+  css.textContent = '@page{size:' + v.w + 'mm ' + v.h + 'mm;margin:0}' +
+    '@media print{ body>*{display:none !important} ' +
+    '#printarea{display:block !important;position:absolute;left:0;top:0} ' +
+    '#printarea img{width:' + v.w + 'mm;height:' + v.h + 'mm;image-rendering:pixelated} }';
+  $('printarea').innerHTML = '<img src="' + last.toDataURL('image/png') + '">';
+  setTimeout(()=>window.print(), 150);
+};
+
+/* ---- Άμεση εκτύπωση μέσα από την εφαρμογή Android ---- */
+const APP = !!(window.Android && window.Android.printBt);
+function b64(u8){
+  let s = '';
+  const CH = 0x8000;
+  for (let i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i+CH));
+  return btoa(s);
+}
+function cmdsFor(cv, copies, gapmm, wmm, hmm){
+  const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+  return tsplBytes(px, cv.width, cv.height, wmm, hmm, gapmm, copies, 12);
+}
+function loadDevices(){
+  if (!APP) return;
+  let list = [];
+  try { list = JSON.parse(window.Android.devices() || '[]'); } catch(e){}
+  const sel = $('dev');
+  const prev = localStorage.getItem('gl-dev') || '';
+  sel.innerHTML = '';
+  if (!list.length){
+    const o = document.createElement('option');
+    o.value = ''; o.textContent = T('nodev'); sel.appendChild(o);
+  }
+  list.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.address; o.textContent = d.name + '  (' + d.address + ')';
+    sel.appendChild(o);
+  });
+  if (prev && list.some(d => d.address === prev)) sel.value = prev;
+  sel.onchange = () => localStorage.setItem('gl-dev', sel.value);
+}
+function pstat(msg, ok){
+  const el = $('pstatus');
+  el.style.display = msg ? 'block' : 'none';
+  el.className = ok === false ? 'warn' : 'ok';
+  el.textContent = msg;
+}
+function sendLabel(cv, wmm, hmm){
+  const copies = Math.max(1, Math.min(999, +$('qty').value || 1));
+  const gapmm = Math.max(0, Math.min(10, +$('gap').value || 2));
+  const data = b64(cmdsFor(cv, copies, gapmm, wmm, hmm));
+  const ip = ($('ip').value || '').trim();
+  if (ip){
+    const [host, p] = ip.split(':');
+    return window.Android.printTcp(host, p ? +p : 9100, data);
+  }
+  const addr = $('dev').value;
+  if (!addr) return 'ERR: ' + T('nodev');
+  return window.Android.printBt(addr, data);
+}
+if (APP){
+  $('prcard').style.display = 'block';
+  $('save').style.display = 'none';
+  $('printbtn').style.display = 'none';
+  $('steps').style.display = 'none';
+  $('savebatch').textContent = T('batchprint');
+  $('refresh').onclick = () => { try { window.Android.requestPerms(); } catch(e){} loadDevices(); };
+  $('direct').onclick = () => {
+    const v = vals();
+    if (!v.sku.trim() && !v.text.trim()) return alert(T('need'));
+    pstat(T('printing'));
+    setTimeout(() => {
+      const r = sendLabel(last, v.w, v.h);
+      if (r === 'OK') pstat(T('done'));
+      else pstat(T('perr', { e: String(r).replace('ERR: ', '') }), false);
+    }, 60);
+  };
+  $('savebatch').onclick = () => {
+    const v = vals();
+    const lines = $('batch').value.split('\n').map(s => s.trim()).filter(Boolean);
+    if (!lines.length) return alert(T('need'));
+    pstat(T('printing'));
+    setTimeout(() => {
+      let n = 0, err = null;
+      for (const ln of lines){
+        const [sku, text] = ln.split(';').map(s => (s||'').trim());
+        const { canvas } = drawLabel(v.w, v.h, sku, text || '', type, v.showSku);
+        const r = sendLabel(canvas, v.w, v.h);
+        if (r !== 'OK'){ err = r; break; }
+        n++;
+      }
+      if (err) pstat(T('perr', { e: String(err).replace('ERR: ', '') }), false);
+      else pstat(T('saved', { n }));
+    }, 60);
+  };
+  loadDevices();
+}
+const _applyLang = applyLang;
+applyLang = function(){
+  _applyLang();
+  if (!APP) return;
+  const m = { 't-h-printer':'hprinter','t-device':'device','t-ip':'ip','t-qty':'qty','t-gap':'gap' };
+  for (const id in m) { const el = $(id); if (el) el.textContent = T(m[id]); }
+  $('direct').textContent = T('direct');
+  $('savebatch').textContent = T('batchprint');
+  loadDevices();
+};
+
+applyLang();
+</script>
+
+</body>
+</html>
